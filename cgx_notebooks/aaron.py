@@ -244,7 +244,8 @@ def select_app(app_name, app_list, apps_n2id):
 
 # load flows and put into a dataframe
 
-def query_flows_to_df(sdk, all_id2n, start_time, end_time, site_id, app_id_list):
+def query_flows_to_df(sdk, all_id2n, start_time, end_time, site_id, app_id_list=None, destination_ips=None,
+                      destination_ports=None, protocol=None, source_ips=None, source_ports=None):
     flow_query = {
         "start_time": start_time,  # "2020-02-26T19:52:45.721Z",
         "end_time": end_time,  # "2020-02-26T20:52:45.721Z",
@@ -252,10 +253,50 @@ def query_flows_to_df(sdk, all_id2n, start_time, end_time, site_id, app_id_list)
             "site": [
                 site_id
             ],
-            "app": selected_app_list
         },
         "debug_level": "all"
     }
+    if app_id_list and isinstance(app_id_list, list):
+        flow_query["filter"]["app"] = app_id_list
+    elif app_id_list:
+        # not list, just add as single value in list.
+        flow_query["filter"]["app"] = [app_id_list]
+
+    flow = {}
+    if destination_ips:
+        if isinstance(destination_ips, list):
+            flow["destination_ip"] = destination_ips
+        else:
+            # single item - make list
+            flow["destination_ip"] = [destination_ips]
+
+    if destination_ports:
+        if isinstance(destination_ports, list):
+            flow["destination_port"] = destination_ports
+        else:
+            # single item - make list
+            flow["destination_port"] = [destination_ports]
+
+    if source_ips:
+        if isinstance(source_ips, list):
+            flow["source_ip"] = source_ips
+        else:
+            # single item - make list
+            flow["source_ip"] = [source_ips]
+
+    if source_ports:
+        if isinstance(source_ports, list):
+            flow["source_port"] = source_ports
+        else:
+            # single item - make list
+            flow["source_port"] = [source_ports]
+
+    if protocol:
+        flow["protocol"] = protocol
+
+    # check and see if we got anything
+    if flow:
+        flow_query["filter"]["flow"] = flow
 
     resp = sdk.post.flows_monitor(flow_query)
 
@@ -311,7 +352,7 @@ def query_flows_to_df(sdk, all_id2n, start_time, end_time, site_id, app_id_list)
 def generate_flow_app_sankey(df, cat_cols=None, value_cols='', title='Sankey Diagram', layout=None,
                              thickness=20, pad=10, line=None):
     if cat_cols is None:
-        cat_cols=[]
+        cat_cols = []
     if layout is None:
         layout = go.Layout(
             title=title,
@@ -373,8 +414,8 @@ def generate_flow_app_sankey(df, cat_cols=None, value_cols='', title='Sankey Dia
         arrangement="perpendicular",
         orientation="h",
         node=dict(
-            pad=10,
-            thickness=20,
+            pad=pad,
+            thickness=thickness,
             line=line,
             label=label_list,
             color=color_list
