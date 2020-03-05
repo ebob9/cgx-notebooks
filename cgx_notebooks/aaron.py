@@ -354,14 +354,15 @@ def query_flows_to_df(sdk, all_id2n, start_time, end_time, site_id, app_id_list=
 
 
 def generate_flow_app_sankey(df, cat_cols=None, value_cols='', title='Sankey Diagram', layout=None,
-                             thickness=20, pad=10, line=None):
+                             thickness=20, pad=10, line=None, width=1500, height=1700, arrangement="perpendicular",
+                             orientation="h", return_dict=False):
     if cat_cols is None:
         cat_cols = []
     if layout is None:
         layout = go.Layout(
             title=title,
-            height=1750,
-            width=1500,
+            height=height,
+            width=width,
             font=dict(
                 family='Arial',
                 size=18,
@@ -415,8 +416,8 @@ def generate_flow_app_sankey(df, cat_cols=None, value_cols='', title='Sankey Dia
     # creating the sankey diagram
     data = dict(
         type='sankey',
-        arrangement="perpendicular",
-        orientation="h",
+        arrangement=arrangement,
+        orientation=orientation,
         node=dict(
             pad=pad,
             thickness=thickness,
@@ -434,7 +435,10 @@ def generate_flow_app_sankey(df, cat_cols=None, value_cols='', title='Sankey Dia
     sankey_dict = dict(data=[data], layout=layout)
     # display(sourceTargetDf)
 
-    return go.Figure(**sankey_dict)
+    if return_dict:
+        return sankey_dict
+    else:
+        return go.Figure(**sankey_dict)
 
 
 # fig = generate_flow_app_sankey(df, ['source_ip', 'app_id', 'destination_ip'], 'row_count')
