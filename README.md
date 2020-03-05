@@ -23,6 +23,7 @@ MIT
 #### Version
 Version | Changes
 ------- | --------
+**1.0.4**| Just catch pandas cause easier
 **1.0.3**| Force Pandas to 1.0.1 to be consistent
 **1.0.2**| Fixes for aaron
 **1.0.1**| Fix for Pandas warning

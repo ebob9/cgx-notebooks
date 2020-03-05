@@ -32,7 +32,11 @@ from fuzzywuzzy import process
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', None)
-pd.set_option('display.max_colwidth', None)
+try:
+    pd.set_option('display.max_colwidth', None)
+except ValueError:
+    # seriously pandas???? :P
+    pd.set_option('display.max_colwidth', -1)
 
 
 def instantiate():
