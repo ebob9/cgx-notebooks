@@ -14,7 +14,7 @@ setup(name='cgx_notebooks',
       license='MIT',
       install_requires=[
             'cloudgenix >= 5.2.1b1',
-            'cloudgenix_idname>=2.0.1',
+            'cloudgenix-idname>=2.0.1',
             'plotly>=4.5.2',
             'pandas',
             'IPython',
