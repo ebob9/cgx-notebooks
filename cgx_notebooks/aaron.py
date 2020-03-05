@@ -311,7 +311,7 @@ def query_flows_to_df(sdk, all_id2n, start_time, end_time, site_id, app_id_list=
         df = pd.DataFrame(flow_items)
 
     else:
-        df = pd.Dataframe()
+        df = pd.DataFrame()
 
     # do id-> name lookups
     for column in df.columns:
