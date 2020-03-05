@@ -4,7 +4,7 @@ with open('README.md') as f:
     long_description = f.read()
 
 setup(name='cgx_notebooks',
-      version='1.0.2',
+      version='1.0.3',
       description='Repository to distribute CloudGenix Python Notebooks and easily install helper functions.',
       long_description=long_description,
       long_description_content_type='text/markdown',
@@ -16,7 +16,7 @@ setup(name='cgx_notebooks',
             'cloudgenix >= 5.2.1b1',
             'cloudgenix-idname>=2.0.1',
             'plotly>=4.5.2',
-            'pandas',
+            'pandas>=1.0.1',
             'IPython',
             'ipywidgets',
             'numpy',
