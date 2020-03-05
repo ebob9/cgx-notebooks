@@ -23,7 +23,7 @@ setup(name='cgx_notebooks',
             'fuzzywuzzy',
             'python-levenshtein'
       ],
-      packages=['cloudgenix_idname'],
+      packages=['cgx_notebooks'],
       python_requires='>=3.6.1',
       classifiers=[
             "Development Status :: 4 - Beta",
