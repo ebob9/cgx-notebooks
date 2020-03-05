@@ -23,4 +23,5 @@ MIT
 #### Version
 Version | Changes
 ------- | --------
+**1.0.1**| Fix for Pandas warning
 **1.0.0**| Initial Release.
