@@ -355,7 +355,7 @@ def query_flows_to_df(sdk, all_id2n, start_time, end_time, site_id, app_id_list=
 
 def generate_flow_app_sankey(df, cat_cols=None, value_cols='', title='Sankey Diagram', layout=None,
                              thickness=20, pad=10, line=None, width=1500, height=1700, arrangement="perpendicular",
-                             orientation="h", return_dict=False):
+                             orientation="h", return_dict=False, return_df=False):
     if cat_cols is None:
         cat_cols = []
     if layout is None:
@@ -435,8 +435,13 @@ def generate_flow_app_sankey(df, cat_cols=None, value_cols='', title='Sankey Dia
     sankey_dict = dict(data=[data], layout=layout)
     # display(sourceTargetDf)
 
-    if return_dict:
-        return sankey_dict
+    if return_dict and return_df:
+        # dict first:
+        return sankey_dict, source_target_df
+    elif return_dict:
+        return go.Figure(**sankey_dict), sankey_dict
+    elif return_df:
+        return go.Figure(**sankey_dict), source_target_df
     else:
         return go.Figure(**sankey_dict)
 

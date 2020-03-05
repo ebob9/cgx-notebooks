@@ -23,9 +23,4 @@ MIT
 #### Version
 Version | Changes
 ------- | --------
-**1.0.5**| Minor tweaks (we should really only do release info for X.Y not X.Y.Z)
-**1.0.4**| Just catch pandas cause easier
-**1.0.3**| Force Pandas to 1.0.1 to be consistent
-**1.0.2**| Fixes for aaron
-**1.0.1**| Fix for Pandas warning
-**1.0.0**| Initial Release.
+**1.0.0-99**| Aaron tweak releases - view commit notes for details.
