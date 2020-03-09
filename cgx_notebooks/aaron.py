@@ -21,12 +21,13 @@ Original file is located at
 # Import and Instantiate the API
 import cloudgenix
 import cloudgenix_idname
+import json
 import pandas as pd
 import plotly.graph_objects as go
 import IPython
 import ipywidgets
 from IPython.display import display, Javascript
-from cloudgenix import jd, jd_detailed
+from cloudgenix import jd, jd_detailed, jdout, jdout_detailed
 from fuzzywuzzy import process
 
 pd.set_option('display.max_rows', None)
@@ -192,6 +193,7 @@ def select_element(element_name, elements_n2id):
 
 # Declare selected app list
 selected_app_list = []
+
 
 # # Get app from form Based on name. Should be in notebook.
 # # @title Enter App Name
@@ -370,9 +372,9 @@ def generate_flow_app_sankey(df, cat_cols=None, value_cols='', title='Sankey Dia
             ))
     if line is None:
         line = dict(
-                color="black",
-                width=0.5
-            )
+            color="black",
+            width=0.5
+        )
 
     # maximum of 6 value cols -> 6 colors
     color_palette = ['#797A7D', '#F37021', '#7ABBE3', '#FFC700', '#646464']
@@ -455,3 +457,533 @@ def generate_flow_app_sankey(df, cat_cols=None, value_cols='', title='Sankey Dia
 
 # fig.update_layout(title_text="Basic Sankey Diagram", font_size=10)
 # fig.show()
+
+VALID_INTERVALS = ['10sec', '5min', '1hour', '1day']
+VALID_MONITOR_METRICS = [
+    "BandwidthUsage",  # statistics: ["average"], unit: "Mbps"
+    "AppSuccessfulConnections",  # statistics: ["sum"], unit: "count"
+    "AppSuccessfulTransactions",  # statistics: ["sum"], unit: "count"
+    "AppFailedToEstablish",  # statistics: ["sum"], unit: "count"
+    "AppTransactionFailures",  # statistics: ["sum"], unit: "count"
+    "AppUnreachable",  # statistics: ["max"], unit: "count"}
+    "AppSiteHealth",  # statistics: ["max"], unit: "count"}
+    "AppNormalizedNetworkTransferTime",  # statistics: ["average"], unit: "milliseconds"}
+    "AppRoundTripTime",  # statistics: ["average"], unit: "milliseconds"}
+    "AppServerResponseTime",  # statistics: ["average"], unit: "milliseconds"}
+    "AppUDPTransactionResponseTime",  # statistics: ["average"], unit: "milliseconds"}
+    "TCPFlowCount",  # statistics: ["max"], unit: "count"}
+    "UDPFlowCount",  # statistics: ["max"], unit: "count"}
+    "TCPConcurrentFlows",  # statistics: ["sum"], unit: "count"}
+    "UDPConcurrentFlows",  # statistics: ["sum"], unit: "count"}
+    "AppPerfUDPAudioBandwidth",  # statistics: ["average"], unit: "Mbps"
+    "AppPerfUDPVideoBandwidth",  # statistics: ["average"], unit: "Mbps"
+    "AppAudioMos",  # statistics: ["average"], unit: "count"
+    "AppPerfUDPAudioJitter",  # statistics: ["average"], unit: "count"
+    "AppPerfUDPVideoJitter",  # statistics: ["average"], unit: "count"
+    "AppPerfUDPAudioPacketLoss",  # statistics: ["average"], unit: "percentage"
+    "AppPerfUDPVideoPacketLoss",  # statistics: ["average"], unit: "percentage"
+    "LqmJitter",  # statistics: ["average"], unit: "milliseconds"
+    "LqmPacketLoss",  # statistics: ["average"], unit: "Percentage"
+    "LqmMos",  # statistics: ["average"], unit: "count"
+    "LqmLatency",  # statistics: ["average"], unit: "milliseconds"
+    "LqmLinkHealth",  # statistics: ["min"], unit: "count"
+]
+
+VALID_MONITOR_BULK_METRICS = [
+    "QoSBandwidthUsage",  # unit: "Mbps", statistics: ["max", "average", "min"]
+    "QoSPacketLoss",  # unit: "count", statistics: ["max", "sum", "min"]
+    "QoSQueueDepth"  # unit: "percentage", statistics: ["max", "average", "min"]
+]
+
+VALID_MONITOR_SYS_METRICS = [
+    "CPUUsage",  # statistics: ["max"], unit: "percentage"
+    "DiskUsage",  # statistics: ["max"], unit: "percentage"
+    "MemoryUsage"  # statistics: ["max"], unit: "percentage"
+]
+
+VALID_STATISTICS = [
+    "average",
+    "max",
+    "sum",
+    "min"
+]
+
+VALID_UNITS = [
+    "Mbps",
+    "count",
+    "milliseconds",
+    "Percentage",
+    "percentage"
+]
+
+VALID_PATH_TYPES = [
+    "DirectInternet",
+    "VPN",
+    "PrivateVPN",
+    "PrivateWAN",
+    "ServiceLink"
+]
+
+VALID_VIEW_TYPES = [
+    "site",
+    "path_type",
+]
+
+
+def raw_query(start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None, metrics_name=None,
+              statistics=None, unit=None, app_list=None, site_list=None, path_type_list=None, element_list=None,
+              individual=None):
+    if q_filter is None:
+        q_filter = filter_object(app_list=app_list, site_list=site_list, path_type_list=path_type_list,
+                                 element_list=element_list)
+    if view is None:
+        view = view_object(individual=individual)
+    if metrics is not None and not isinstance(metrics, list):
+        metrics = [metrics]
+    elif metrics is None:
+        metrics = [
+            metrics_object(metrics_name=metrics_name, statistics=statistics, unit=unit)
+        ]
+
+    return {
+        "start_time": start_time,
+        "end_time": end_time,
+        "filter": q_filter,
+        "interval": interval if interval in VALID_INTERVALS else VALID_INTERVALS[0],
+        "metrics": metrics,
+        "view": view
+    }
+
+
+def metrics_object(metrics_name, statistics, unit):
+    metrics_obj = {
+        "name": metrics_name,
+        "unit": unit
+    }
+
+    if isinstance(statistics, list):
+        metrics_obj["statistics"] = statistics
+    else:
+        metrics_obj["statistics"] = [statistics]
+
+    return metrics_obj
+
+
+def filter_object(app_list=None, site_list=None, path_type_list=None, element_list=None):
+    q_filter = {}
+    if app_list is not None and isinstance(app_list, list):
+        q_filter['app'] = app_list
+    elif app_list is not None:
+        # likely not a list, throw in list encapsulated:
+        q_filter['app'] = [app_list]
+
+    if site_list is not None and isinstance(site_list, list):
+        q_filter['site'] = site_list
+    elif site_list is not None:
+        # likely not a list, throw in list encapsulated:
+        q_filter['site'] = [site_list]
+
+    if path_type_list is not None and isinstance(path_type_list, list):
+        q_filter['path_type'] = path_type_list
+    elif path_type_list is not None:
+        # likely not a list, throw in list encapsulated:
+        q_filter['path_type'] = [path_type_list]
+
+    if element_list is not None and isinstance(element_list, list):
+        q_filter['element'] = element_list
+    elif element_list is not None:
+        # likely not a list, throw in list encapsulated:
+        q_filter['element'] = [element_list]
+
+    return q_filter
+
+
+def view_object(individual=None):
+    view_obj = {}
+    if individual is not None:
+        view_obj['individual'] = individual
+    return view_obj
+
+
+def bandwidthusage_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                         statistics="average", unit="Mbps", app_list=None, site_list=None,
+                         path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="BandwidthUsage",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appsuccessfulconnections_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                                   statistics="sum", unit="count", app_list=None, site_list=None,
+                                   path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppSuccessfulConnections",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appsuccessfultransactions_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                                    statistics="sum", unit="count", app_list=None, site_list=None,
+                                    path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppSuccessfulTransactions",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appfailedtoestablish_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                               statistics="sum", unit="count", app_list=None, site_list=None,
+                               path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppFailedToEstablish",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def apptransactionfailures_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                                 statistics="sum", unit="count", app_list=None, site_list=None,
+                                 path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppTransactionFailures",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appunreachable_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                         statistics="max", unit="count", app_list=None, site_list=None,
+                         path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppUnreachable",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appsitehealth_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                        statistics="max", unit="count", app_list=None, site_list=None,
+                        path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppSiteHealth",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appnormalizednetworktransfertime_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None,
+                                           view=None,
+                                           statistics="average", unit="milliseconds", app_list=None, site_list=None,
+                                           path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view,
+                                              metrics_name="AppNormalizedNetworkTransferTime",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def approundtriptime_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                           statistics="average", unit="milliseconds", app_list=None, site_list=None,
+                           path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppRoundTripTime",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appserverresponsetime_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                                statistics="average", unit="milliseconds", app_list=None, site_list=None,
+                                path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppServerResponseTime",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appudptransactionresponsetime_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None,
+                                        view=None,
+                                        statistics="average", unit="milliseconds", app_list=None, site_list=None,
+                                        path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view,
+                                              metrics_name="AppUDPTransactionResponseTime",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def tcpflowcount_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                       statistics="max", unit="count", app_list=None, site_list=None,
+                       path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="TCPFlowCount",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def udpflowcount_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                       statistics="max", unit="count", app_list=None, site_list=None,
+                       path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="UDPFlowCount",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def tcpconcurrentflows_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                             statistics="sum", unit="count", app_list=None, site_list=None,
+                             path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="TCPConcurrentFlows",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def udpconcurrentflows_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                             statistics="sum", unit="count", app_list=None, site_list=None,
+                             path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="UDPConcurrentFlows",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appperfudpaudiobandwidth_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                                   statistics="average", unit="Mbps", app_list=None, site_list=None,
+                                   path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppPerfUDPAudioBandwidth",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appperfudpvideobandwidth_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                                   statistics="average", unit="Mbps", app_list=None, site_list=None,
+                                   path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppPerfUDPVideoBandwidth",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appaudiomos_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                      statistics="average", unit="count", app_list=None, site_list=None,
+                      path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppAudioMos",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appperfudpaudiojitter_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                                statistics="average", unit="count", app_list=None, site_list=None,
+                                path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppPerfUDPAudioJitter",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appperfudpvideojitter_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                                statistics="average", unit="count", app_list=None, site_list=None,
+                                path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppPerfUDPVideoJitter",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appperfudpaudiopacketloss_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                                    statistics="average", unit="percentage", app_list=None, site_list=None,
+                                    path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppPerfUDPAudioPacketLoss",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def appperfudpvideopacketloss_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                                    statistics="average", unit="percentage", app_list=None, site_list=None,
+                                    path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="AppPerfUDPVideoPacketLoss",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def lqmjitter_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                    statistics="average", unit="milliseconds", app_list=None, site_list=None,
+                    path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="LqmJitter",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def lqmpacketloss_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                        statistics="average", unit="Percentage", app_list=None, site_list=None,
+                        path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="LqmPacketLoss",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def lqmmos_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                 statistics="average", unit="count", app_list=None, site_list=None,
+                 path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="LqmMos",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def lqmlatency_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                     statistics="average", unit="milliseconds", app_list=None, site_list=None,
+                     path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="LqmLatency",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def lqmlinkhealth_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                        statistics="min", unit="count", app_list=None, site_list=None,
+                        path_type_list=None, element_list=None, individual=None):
+    return sdk.post.metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                              q_filter=q_filter, view=view, metrics_name="LqmLinkHealth",
+                                              statistics=statistics, unit=unit, app_list=app_list, site_list=site_list,
+                                              path_type_list=path_type_list, element_list=element_list,
+                                              individual=individual))
+
+
+def qosbandwidthusage_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                            statistics=None, unit="count", app_list=None, site_list=None,
+                            path_type_list=None, element_list=None, individual=None):
+    if statistics is None:
+        statistics = ["max", "average", "min"]
+    return sdk.post.bulk_metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                                   q_filter=q_filter, view=view, metrics_name="QoSBandwidthUsage",
+                                                   statistics=statistics, unit=unit, app_list=app_list,
+                                                   site_list=site_list,
+                                                   path_type_list=path_type_list, element_list=element_list,
+                                                   individual=individual))
+
+
+def qospacketloss_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                        statistics=None, unit="count", app_list=None, site_list=None,
+                        path_type_list=None, element_list=None, individual=None):
+    if statistics is None:
+        statistics = ["max", "average", "min"]
+    return sdk.post.bulk_metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                                   q_filter=q_filter, view=view, metrics_name="QoSPacketLoss",
+                                                   statistics=statistics, unit=unit, app_list=app_list,
+                                                   site_list=site_list,
+                                                   path_type_list=path_type_list, element_list=element_list,
+                                                   individual=individual))
+
+
+def qosqueuedepth_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                        statistics=None, unit="count", app_list=None, site_list=None,
+                        path_type_list=None, element_list=None, individual=None):
+    if statistics is None:
+        statistics = ["max", "average", "min"]
+    return sdk.post.bulk_metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                                   q_filter=q_filter, view=view, metrics_name="QoSQueueDepth",
+                                                   statistics=statistics, unit=unit, app_list=app_list,
+                                                   site_list=site_list,
+                                                   path_type_list=path_type_list, element_list=element_list,
+                                                   individual=individual))
+
+
+def cpuusage_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                   statistics="max", unit="percentage", app_list=None, site_list=None,
+                   path_type_list=None, element_list=None, individual=None):
+    return sdk.post.sys_metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                                  q_filter=q_filter, view=view, metrics_name="CPUUsage",
+                                                  statistics=statistics, unit=unit, app_list=app_list,
+                                                  site_list=site_list,
+                                                  path_type_list=path_type_list, element_list=element_list,
+                                                  individual=individual))
+
+
+def memoryusage_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                      statistics="max", unit="percentage", app_list=None, site_list=None,
+                      path_type_list=None, element_list=None, individual=None):
+    return sdk.post.sys_metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                                  q_filter=q_filter, view=view, metrics_name="MemoryUsage",
+                                                  statistics=statistics, unit=unit, app_list=app_list,
+                                                  site_list=site_list,
+                                                  path_type_list=path_type_list, element_list=element_list,
+                                                  individual=individual))
+
+
+def diskusage_query(sdk, start_time, end_time, interval="10sec", metrics=None, q_filter=None, view=None,
+                    statistics="max", unit="percentage", app_list=None, site_list=None,
+                    path_type_list=None, element_list=None, individual=None):
+    return sdk.post.sys_metrics_monitor(raw_query(start_time, end_time, interval=interval, metrics=metrics,
+                                                  q_filter=q_filter, view=view, metrics_name="DiskUsage",
+                                                  statistics=statistics, unit=unit, app_list=app_list,
+                                                  site_list=site_list,
+                                                  path_type_list=path_type_list, element_list=element_list,
+                                                  individual=individual))
+
+
+def single_metric_to_dataframe(resp, raw_datapoints=False):
+
+    # use jdout to raw get json from resp obj and ensure it's easy to manipulate
+    data_obj = json.loads(jdout(resp))
+    df = pd.DataFrame()
+
+    metrics = data_obj.get("metrics", [])
+    if not metrics or not isinstance(metrics[0], dict):
+        return df, None
+    series = metrics[0].get("series", [])
+    if not series or not isinstance(series[0], dict):
+        return df, None
+    name = series[0].get("name", "UNKNOWN")
+    data = series[0].get("data", [])
+    if not data or not isinstance(data[0], dict):
+        return df, None
+    datapoints = data[0].get("datapoints", [])
+    if not datapoints or not isinstance(datapoints[0], dict):
+        return df, None
+
+    # create real DF
+    df = pd.DataFrame(datapoints)
+    if raw_datapoints:
+        # return what we got
+        return df, name
+
+    # if here, want df appropriately renamed and time indexed.
+
+    # cast ISO 8601 format to datetime
+    df['time'] = pd.to_datetime(df['time'], infer_datetime_format=True)
+    # make time index DF
+    df = df.set_index('time')
+    # Rename column to series name
+    df.rename(columns={'value': name}, inplace=True)
+
+    return df, name
